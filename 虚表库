@@ -1,0 +1,588 @@
+//vlist 虚表控件（光庆增强版）
+//在原vlist的基础上增加部分功能
+//参考lujjjh的vlistview做了一些小的改进
+//原帖 http://bbs.aardio.com/forum.php?mod=viewthread&tid=11729
+
+import win.ui.ctrl.listview;
+import win.imageList;
+namespace win.ui.ctrl;
+
+class vlist {
+	ctor (parent,tParam) {
+		if (tParam) {
+			tParam.cls = "SysListView32";
+			tParam.style |= 0x1000/*_LVS_OWNERDATA*/;
+			if (tParam.edge)
+				tParam.exstyle |= 0x200/*_WS_EX_CLIENTEDGE*/;  
+			select tParam.mode {
+				case "icon" tParam.style |= 0x0/*_LVS_ICON*/;
+				case "list" tParam.style |= 0x3/*_LVS_LIST*/;
+				case "smallicon" tParam.style |= 0x2/*_LVS_SMALLICON*/;
+				else tParam.style |= 0x1/*_LVS_REPORT*/;
+			}
+			if (tParam.editable) tParam.style |= 0x200/*_LVS_EDITLABELS*/;
+			if (tParam.hscroll) tParam.style |= 0x800/*_LVS_ALIGNLEFT*/;
+			if (tParam.vscroll) tParam.style |= 0x0/*_LVS_ALIGNTOP*/;
+			if (tParam.msel === false) tParam.style |= 0x4/*_LVS_SINGLESEL*/;
+			if (tParam.asel === null || tParam.asel) tParam.style |= 0x8/*_LVS_SHOWSELALWAYS*/;
+		}
+	}
+
+	onCreate = function () {
+		this.fullRow = true;
+		this.gridLines = true;
+		this.setExtended(0x10000/*_LVS_EX_DOUBLEBUFFER*/);
+		this.setColumnImageList(columnImageList);
+		this._prenotify = function(id, code, ptr) {
+			if (code = 0xFFFFFF4F/*_LVN_GETDISPINFOW*/) { 
+				var dispInfo = ptr ? owner.getNotifyDispInfo(code, ptr); 
+				var item = dispInfo.item;
+				var data = this.dataAdapter.getItem(item.iItem,item.iSubItem);
+				if (type(data) === "table"){
+					..table.mixin(item, data);
+				}
+				else{
+					item.text = tostring(data); 
+				}
+				owner.setNotifyDispInfo(ptr,dispInfo);
+				return 1;
+			}
+			elseif(code=0xFFFFFF94/*_LVN_COLUMNCLICK*/) {
+    			var nm = this.getNotifyMessage(code,ptr)
+    			var desc = this.getColumnImage(nm.iSubItem) == 0;
+    			if(this.onSortColumn){
+    				for (i = 1; this.columnCount){
+    					var col = LVCOLUMN();
+						col.mask =  0x1/*_LVCF_FMT*/
+    					this.getColumn(col,i)
+    					this.setColumn({fmt=col.fmt&(~0x800 /*_LVCFMT_IMAGE*/)},i);  
+    				}
+    				if( this.onSortColumn(nm.iSubItem,desc) ){
+    					var col = LVCOLUMN();
+						col.mask =0x1/*_LVCF_FMT*/
+    					this.getColumn(col,nm.iSubItem)
+    					this.setColumn({iImage=desc?1:0,fmt=col.fmt|0x800/*_LVCFMT_IMAGE*/|0x1000/*_LVCFMT_BITMAP_ON_RIGHT*/},nm.iSubItem)
+    				}
+    			} 
+    		}
+    		elseif(code=0xFFFFFFFE/*_NM_CLICK*/){
+        		var event = this.getNotifyMessage(code,ptr);
+        		if( ! event.iItem && event.iSubItem ) return ;
+        		if(this.onClick){
+   					this.onClick(event.iItem,event.iSubItem);
+    			} 
+    		}
+    		elseif(code=0xFFFFFFFD/*_NM_DBLCLK*/){
+        		var event = this.getNotifyMessage(code,ptr);
+        		if( ! event.iItem && event.iSubItem ) return ;
+        		if(this.onDblClick){
+   					this.onDblClick(event.iItem,event.iSubItem);
+    			} 
+    		}
+    		elseif(code=0xFFFFFFFB/*_NM_RCLICK*/){
+        		var event = this.getNotifyMessage(code,ptr);
+        		if( ! event.iItem && event.iSubItem ) return ;
+        		if(this.onRClick){
+   					this.onRClick(event.iItem,event.iSubItem);
+    			} 
+    		}    	
+    		elseif(code=0xFFFFFFFA/*_NM_RDBLCLK*/){
+        		var event = this.getNotifyMessage(code,ptr);
+        		if( ! event.iItem && event.iSubItem ) return ;
+        		if(this.onRDblClick){
+   					this.onRDblClick(event.iItem,event.iSubItem);
+    			} 
+    		}    
+    		elseif(code=0xFFFFFF9B/*_LVN_ITEMCHANGED*/){
+        		var event = this.getNotifyMessage(code,ptr);
+        		if( (event.uChanged & 0x8/*_LVIF_STATE*/) 
+        			&& (event.uNewState & 0x2/*_LVIS_SELECTED*/) ){
+        				if(this.onItemChanged){
+   							this.onItemChanged(event.iItem);
+    					}	
+        		}
+    		}    
+       		elseif(code=0xFFFFFF65/*_LVN_KEYDOWN*/){
+    			var nmkey = ..raw.convert(ptr,{
+  					struct hdr = ::NMHDR();
+  					WORD vkey;
+  					INT flags;
+				});
+ 	      		if(this.onKeyDown){
+   					if (this.onKeyDown(nmkey.vkey)) return true; 
+    			} 
+    			/**
+    			只支持以下按键的默认事件：
+    			0x21/*_VK_PGUP*/,
+    			0x22/*_VK_PGDN*/,
+    			0x23/*_VK_END*/,
+    			0x24/*_VK_HOME*/,
+    			0x25/*_VK_LEFT*/,
+    			0x26/*_VK_UP*/,
+    			0x27/*_VK_RIGHT*/
+    			0x28/*_VK_DOWN*/,
+    			**/
+    			if (nmkey.vkey<0x21 || nmkey.vkey>0x28) return true;
+    		}
+		}
+	}
+	createAdapter = function(dataSource,...){
+		var ad =classAdapter(this, dataSource,...)
+		ad.update(); 
+		return ad;
+	}
+	createTableAdapter = function(dataSource,...){
+		var ad =tableAdapter(this, dataSource,...)
+		ad.update(); 
+		return ad;
+	}
+	createAdoAdapter = function(dataSource,...){
+		var ad = adoAdapter(this, dataSource,...)
+		ad.update();
+		return ad;
+	}
+	createSqliteAdapter = function(dataSource,...){
+	    var ad =sqliteAdapter(this, dataSource,...)
+	    ad.update();
+	    return ad; 
+	}
+    _onDestroy = function () {
+		if( this.dataAdapter ) {
+			this.dataAdapter.__close(); 
+		};
+	}
+	doubleBuffer = function(){
+		this.setExtended(0x10000/*_LVS_EX_DOUBLEBUFFER*/);
+	}
+	getSelectedAll =function(){
+		var t={};
+		for(i=1;this.count;1){
+			if(this.getSelected(i)) ..table.push(t,i)
+		}
+		return t; 
+	}
+	setColumns = function(coltext,colwidth,colstyle){
+		setCol(this,coltext,colwidth,colstyle);
+	}	
+	clearColumnImage = function(){
+		for (i = 1; this.columnCount){
+			var col = LVCOLUMN();
+			col.mask =  0x1/*_LVCF_FMT*/
+			this.getColumn(col,i)
+			this.setColumn({fmt=col.fmt&(~0x800 /*_LVCFMT_IMAGE*/)},i);  
+		}	
+	}
+	setColumnImage = function(col,iImage){
+		var lvcol = LVCOLUMN();
+		lvcol.mask =0x1/*_LVCF_FMT*/
+		this.getColumn(lvcol,col)
+		this.setColumn({iImage=iImage,fmt=lvcol.fmt|0x800/*_LVCFMT_IMAGE*/|0x1000/*_LVCFMT_BITMAP_ON_RIGHT*/},col)		
+	}
+	setColumnWidth = function(col,width){
+		this.setColumn({cx=width},col)
+	}
+	getRowText = function(row){
+		return this.getItemText(row,-1))
+	}
+	delRow = function(row){
+		if (this.dataAdapter.delRow){
+			this.dataAdapter.delRow(row);
+		}
+	}
+	setItemText = function(row,col,text){
+		if (this.dataAdapter.setItem){
+			this.dataAdapter.setItem(row,col,text);
+		}
+	}
+	insertRow = function(row,...){
+		if (this.dataAdapter.insertRow){
+			var text={...}
+			if (type(text[[1]])="table"){
+				this.dataAdapter.insertRow(row,text[[1]]);
+			}else{
+				this.dataAdapter.insertRow(row,text);
+			}
+		}
+	}
+	addRow = function(...){
+		this.insertRow(,...);
+	}
+	getColumnTextAll = function(){
+		var t={}
+		for(i=1;this.columnCount;1){
+			..table.push(t,this.getColumnText(i))
+		}
+		return t; 		
+	}
+	setTable = function(dataSource,fields){
+		if(!fields){ //如果没有指定标题栏
+			if(dataSource[["fields"]]) fields=dataSource[["fields"]]//默认
+			elseif(#dataSource && !#(dataSource[1])) fields=..table.keys(dataSource[1])//字典，键名列表
+		} 
+		if (type(fields)="string") fields=..string.split(fields,",;");//将字符串转换为“表”
+		if (type(fields)!="table") fields={}; //取消非法字段指定
+		if (#fields){
+			var curfields=this.getColumnTextAll();
+			if (#fields!=#curfields or ..table.tostring(curfields)!=..table.tostring(fields)) this.setColumns(fields)
+    	}else{
+			fields = null;
+			if (!#dataSource) this.setColumns();
+			elseif (this.columnCount!=#(dataSource[1])){
+				this.setColumns(..string.split(..string.repeat(#(dataSource[1]),' ')))
+			}
+		}
+		return this.createTableAdapter(dataSource,fields); 
+	}
+	getItems = function(){
+		return this.dataAdapter.getItems(); 
+	}
+	getTable = function(){
+		return this.dataAdapter.getTable(); 
+	}
+	update = function(){
+		return this.dataAdapter.update(); 
+	}
+	
+	
+	@_metaProperty;	
+	
+}
+
+namespace vlist {
+	_metaProperty = ..win.ui.ctrl.listview._metaProperty; 
+    columnImageList = ..win.imageList(16, 15);
+	columnImageList.add('GIF\56\57a \0\15\0\x80\0\0\x80\x80\x80\xff\0\xff\33\xf9\4\0\0\0\0\0\44\0\0\0\0 \0\15\0\0\2\31\x8c\x8f\xa9\xcb\xed\15\xa3\x9c\xb4N\xf0\x80\xde\56k\xbfA\\\xd7\x84 \x97Y\xea\xca\xb6\xee\11\xc7F\1\0;', 0xff00ff);
+
+    LVCOLUMN = class {
+		INT mask = 0;
+		int fmt; 
+		int cx; 
+		ptr	text; 
+		int cchTextMax; 
+		int iSubItem = 1; 
+		int iImage;
+		int iOrder;
+	}
+	
+   	setCol = function(owner,fields,colwidth,colstyle){
+		for(i=owner.columnCount-1;0;-1){
+			::SendMessageInt(owner.hwnd, 0x101C/*_LVM_DELETECOLUMN*/, i, 0);
+		}
+		if !(fields && #fields) return;
+		if (type(fields)!="table") fields={fields};
+		var str,rc,width,col
+		if (!colwidth){
+			str = ..string.join(fields);
+			rc = owner.clientRect;
+			width = rc.right - rc.left;
+			col = width/ #str;
+		}
+		for(i=1;#fields;1) {
+			var cwidth
+			if(colwidth){
+				if (type(colwidth)="table"){
+					cwidth=colwidth[[i]]:0
+				}else{
+					cwidth=colwidth
+				}
+			}else{
+				cwidth=col*#fields[i]
+			}
+			var cstyle
+			if(colstyle){
+				if (type(colstyle)="table"){
+					cstyle=colstyle[[i]]:0
+				}else{
+					cstyle=colstyle
+				}
+			}else{
+				cstyle=0
+			}
+			owner.insertColumn(fields[i],cwidth,i,cstyle);
+			if(i=1 and cstyle){
+				var col1 = owner.getColumn(,1);
+				col1.fmt=cstyle
+				owner.setColumn(col1,1)
+			}
+		}
+	};
+	
+	class baseAdapter {
+		ctor (listview,dataSource) {
+			this._listview = listview;
+			this._dataSource = dataSource;
+			if( listview.dataAdapter ) listview.dataAdapter.__close();
+			listview.dataAdapter = this; 
+		}
+		update = function(){
+			::SendMessageInt(listview.hwnd, 0x102F/*_LVM_SETITEMCOUNT*/,this.count(), 0x2/*_LVSICF_NOSCROLL*/);
+		}
+		__close = function(){ this._listview.dataAdapter = null; if( this.close )  this.close() };
+	}
+	
+	var baseAdapter = baseAdapter;
+	
+	class classAdapter {
+		ctor (listview,dataSource,columns, ...) {
+			this = baseAdapter(listview,dataSource);
+			var instance = this._dataSource(columns,...);
+		};
+		count = function () {
+			return instance.count();
+		};
+		getItem = function (row, col) {
+			return instance.getItem(row, col);
+		}
+	}
+	
+	class tableAdapter {
+		ctor (listview,dataSource,columns, ...) {
+			this = baseAdapter(listview,dataSource);
+			this._columns = columns;
+		};
+		count = function () {
+			return #(this._dataSource);
+		};
+		getItem = function (row, col) {
+			if (this._columns) return this._dataSource[row][[this._columns[col]]];
+			else return this._dataSource[row][col];
+		}
+		getItems = function () {
+			if (!#(this._dataSource)) return {}; 
+			var t = {};
+			for(rows=1;this._listview.count){ 
+				var row = {}
+				for(cols=1;this._listview.columnCount) {
+					if (this._columns) ..table.push(row,this._dataSource[rows][[this._columns[cols]]]);
+					else ..table.push(row,this._dataSource[rows][cols]);
+				}
+				..table.push(t,row) ; 
+			} 
+			return t; 
+		}	
+		getTable = function () {
+			return this._dataSource; 
+		}			
+		delRow = function(row){
+			if (!row or row>#(this._dataSource) or row<1) return ;  
+			..table.remove(this._dataSource,row);
+			this.update()
+		}
+		setItem = function(row,col,text){
+			if (!row or row>#(this._dataSource) or row<1) return ;   
+			if (this._columns) this._dataSource[row][this._columns[col]]=text;
+			else this._dataSource[row][col]=text;	
+			this.update()
+		}
+		insertRow = function(row,text){
+			if(!row or row>(#(this._dataSource)+1) or row<1) row=#(this._dataSource)+1;
+			if(type(text)!="table") return ; 
+			if (this._columns){
+				if (text[[this._columns[1]]]){
+					 ..table.insert(this._dataSource,text,row)
+				}else {
+					var t={}
+					for(i=1;#this._columns;1){
+						t[this._columns[i]]=text[[i]]
+					}
+					..table.insert(this._dataSource,t,row)
+				}
+			}else{
+				..table.insert(this._dataSource,text,row)
+			}
+			this.update()
+		}
+	}
+	
+	class adoAdapter {
+		ctor (listview,dataSource, ...) {
+			this = baseAdapter(listview,dataSource);
+		};
+		count = function () {
+			var count = dataSource.getRecordCount();
+			if (count === -1) error("请以静态方式打开记录集。",3);
+			return count;
+		};
+		getItem = function (row, col) {
+			dataSource.Move(row - 1, 1/*_adBookmarkFirst*/); 
+			return dataSource(col - 1).value;
+		}
+		close = function(){ if(dataSource) { dataSource.close(); dataSource = null; } };
+	}
+
+	class sqliteAdapter {
+		ctor (listview,dataSource,sql) { 
+			this = baseAdapter(listview,dataSource);
+			this.rowIdx = null; 
+		};
+		count = function () { 
+			var row = dataSource.stepQuery( ..string.replace(sql,"^\s*<@@SELECT@>.+?<@@FROM@>\s+","SELECT COUNT(*) FROM ",1), )
+			if(!row) error("sql必须是SELECT ... FROM 语句",3); 
+			return row["COUNT(*)"];
+		};
+		getItem = function (row, col) {
+			if( this.rowIdx == row ){ 
+				return this.row[col] 
+			} 
+			var stmt = dataSource.prepare( sql + " Limit 1 Offset " + row-1);
+			this.row = stmt.stepResult()
+			stmt.finalize();;
+			this.rowIdx = row;
+			return this.row[col];
+		}
+	}
+}
+
+/**intellisense()
+?win.ui.ctrl.vlist = !ctrl_vlist.
+!ctrl_vlist.clearColumnImage() = 清空全部列标题图标。
+!ctrl_vlist.setColumnImage(__,) = 设置列标题图标。\n参数1：列号；\n参数2：图标索引。
+!ctrl_vlist.update() = 刷新显示虚表内容。
+!ctrl_vlist.getItems() = 获取虚表全部内容，返回数组型表。
+!ctrl_vlist.getRowText(__) = 取行文本。参数1：行号。
+
+!ctrl_vlist.setTable(__,) = 设置数据表。\n参数1：数据表，数组型或字典型均可。\n参数2：字典型数据表的列名数组。如果数据表为数组型，此参数可省略。
+!ctrl_vlist.getTable() = 获取数据表。返回的数据格式同settable（）时相同。
+
+!ctrl_vlist.setColumns(__,,) = 设置标题栏。\n参数1：列文本，文本或文本数组；\n参数2：列宽，-1为自动填充剩余空间\n参数3：样式，使用_LVCFMT_前缀的常量。\n如果列宽或样式为非数组，则全部列都按当前值处理。
+!ctrl_vlist.setColumnWidth(__,) = 设置列宽度。\n参数1：列号；\n参数2：宽度值。-1为自动填充至末尾。
+
+!ctrl_vlist.setColumnText(__,"") = 设置标题栏文本。\n参数1：列号；\n参数2：标题文本。
+!ctrl_vlist.getColumnText(__) = 取指定列标题栏文本
+!ctrl_vlist.getColumnTextAll() = 取所有列标题栏文本
+
+!ctrl_vlist.setItemText(__,,"") = 设置单元格文本。\n参数1：行号\n参数2：列号\n参数3：内容文本
+!ctrl_vlist.getItemText(__,,) = 取单元格文本。\n参数1：行号\n参数2：列号,默认值为1,如果为-1,则取整行文本数组。\n参数3：缓冲区长度,默认为520。
+
+!ctrl_vlist.getSelectedAll() = 取全部选择项。
+!ctrl_vlist.doubleBuffer() = 启用双缓冲，防止闪烁。
+
+!ctrl_vlist.insertRow(__,) = 插入一行。\n参数1：插入行号（插入到该行前）\n       从1开始，默认为行数+1（插入到最后一行后）。\n参数2：每列内容。可以用1个表，也可以用多个参数。
+!ctrl_vlist.addRow(__) = 在末尾添加一行。\n参数：每列内容。可以用1个表，也可以用多个参数。
+!ctrl_vlist.delRow(__) = 删除一行。\n参数：要删除的行号。
+
+!ctrl_vlist.onItemChanged(row) = @.onItemChanged = function(row){
+    /*列表项被改变事件，row：改变后的列表项行号*/
+	__
+}
+!ctrl_vlist.onSortColumn(列号,是否倒序) = @.onSortColumn = function(col,desc){
+	/*点击列标题进行排序。col：列号，从1开始。desc：是否倒序。返回true重置标题栏排序图标*/
+	import godking
+	..table.sortEx(owner.getTable(),col,desc,0/*数据转换*/)
+	owner.update()
+	return true;
+} 
+!ctrl_vlist.onClick(行号,列号) = @.onClick = function(row/*行*/,col/*列*/){
+	/*鼠标左键点击项目事件*/
+	__
+} 
+!ctrl_vlist.onDblClick(行号,列号) = @.onDblClick = function(row/*行*/,col/*列*/){
+	/*鼠标左键双击项目事件*/
+	__
+} 
+!ctrl_vlist.onRClick(行号,列号) = @.onRClick = function(row/*行*/,col/*列*/){
+	/*鼠标右键点击项目事件*/
+	__
+} 
+!ctrl_vlist.onRDblClick(行号,列号) = @.onRDblClick = function(row/*行*/,col/*列*/){
+	/*鼠标右键双击项目事件*/
+	__
+} 
+!ctrl_vlist.onKeyDown(vkey) = @.onKeyDown = function(vkey/*键代码*/){
+    var index = owner.selIndex;
+	/*按键按下事件，返回true则阻止默认事件*/
+	__
+} 
+
+!ctrl_vlist.insertColumn(.(列标题,列宽,位置,格式) = 插入列。\n参数1：标题字符串、图像索引、指定LVCOLUMN结构体成员的table对象\n参数2：列宽度，-1为自动填充剩余空间\n参数3：插入位置，从1开始\n参数4：列格式，使用_LVCFMT_前缀的常量指定,如_LVCFMT_LEFT为文本左对齐
+!ctrl_vlist.getColumn() = !lvcolumn.
+!ctrl_vlist.getColumn(.(列参数表,列序号) = 参数一可以为空,或是指定LVCOLUMN结构体成员键值的参数表,\n返回LVCOLUMN结构体
+!ctrl_vlist.setColumn(.({cx=100},列序号) = 改变列宽
+!ctrl_vlist.setColumn(.(列参数表,列序号) = 参数一指定LVCOLUMN结构体成员键值的参数表,\n也可以是LVCOLUMN结构体对象,自动设置掩码参数.
+!ctrl_vlist.getEditControl() = 开始编辑时返回编辑控件,\n此控件在完成编辑后会自动销毁,不必手动销毁\n取消发送_WM_CANCELMODE消息即可\n!edit.
+?.getEditControl = !edit.
+!ctrl_vlist.editLable(.(行序号) = 编辑指定项,无参数则编辑选定项\n此函数成功返回编辑文本框句柄\n返则返回0
+!ctrl_vlist.setItemPos(__/*项索引*/,x,y) = 设置图标项坐标
+!ctrl_vlist.count = 项目总数
+!ctrl_vlist.delColumn(__) = 删除指定列
+!ctrl_vlist.columnCount = 列总数
+!ctrl_vlist.clear() = 清空所有项
+!ctrl_vlist.getNextItem(.(起始索引,选项) = 参数二为一个或多个 _LVNI_ 前缀的常量合并\n默认为 _LVNI_ALL \n起始索引默认为0 
+!ctrl_vlist.getFocused() = 获取当前焦点项位置,返回数值,\n不存在焦点项则返回0
+!ctrl_vlist.getSelection(.(起始索引)  = 获取选中项,返回数值,\n不存在选中项则返回0\n可选指定起始索引,默认为0		
+!ctrl_vlist.getItemRect(.(行,列,RECT,选项) = 返回表示项目表示项目区块的RECT结构体,\n除第一个参数以外,其他参数为可选参数,\n如果不指定列则返回所在行区块,\n使用_LVIR_前缀常量指定选项
+!ctrl_vlist.getItemRect() = !rect.
+!ctrl_vlist.hitTest(.(x坐标,y坐标,是否屏幕坐标) = 该函数返回指定坐标的行号,参数三可省略,默认为false.\n如果不指定任何参数，则自动调用 win.getMessagePos() 获取消息坐标\n该函数有第二、第三个返回值并可能为0
+!ctrl_vlist.setSelected(__/*项索引*/) = 选中项
+!ctrl_vlist.setSelected(__/*项索引*/,false) = 取消选中项
+!ctrl_vlist.getSelected(__/*项索引*/) = 指定项是否选中状态
+!ctrl_vlist.getChecked(__) = 返回指定索引项是否选中
+!ctrl_vlist.setChecked(__) = 选定指定索引项
+!ctrl_vlist.setItemState(.(项索引,状态位,掩码) = 设置状态,参数三如果省略则使用参数二的值.
+!ctrl_vlist.getItemState(.(项索引,状掩码 ) = 读取状态值
+!ctrl_vlist.selIndex = 当前选定项索引
+!ctrl_vlist.fullRow = 是否选中整行
+!ctrl_vlist.hwnd = 控件句柄
+!ctrl_vlist.id = 控件ID
+!ctrl_vlist._parentForm = 控件所在的父窗口(指win.form对象)\n!winform.
+!ctrl_vlist.getParent() = 返回父窗口\n!static.
+!ctrl_vlist.setParent(__/*控件对象*/) = 改变父窗口 
+!ctrl_vlist.disabled = 是否禁用
+!ctrl_vlist.left = 左侧坐标
+!ctrl_vlist.right = 右侧坐标
+!ctrl_vlist.top = 顶部坐标
+!ctrl_vlist.bottom = 底部坐标 
+!ctrl_vlist.width = 宽度
+!ctrl_vlist.height = 高度
+!ctrl_vlist.redraw() = 刷新
+!ctrl_vlist.setRedraw(false) = 禁止重绘
+!ctrl_vlist.setRedraw(true) = 恢复重绘
+!ctrl_vlist.show(true__) = 显示控件
+!ctrl_vlist.getRect() = 控件区块位置(::RECT结构体)
+!ctrl_vlist.getRect(true) = 控件屏幕区块位置(::RECT结构体)  
+!ctrl_vlist.setRect(rc) = 设置控件区块位置(::RECT结构体)  
+!ctrl_vlist.setRect(rc,true) = 设置控件屏幕区块位置(::RECT结构体)
+!ctrl_vlist.getClientRect() =  控件客户区块位置(::RECT结构体)\n!rect.
+!ctrl_vlist.getFont() = 控件字体(::LOGFONT结构体)\n!logfont.
+!ctrl_vlist.setFont(__/*指定字体*/) = 指定LOGFONT字体对象,或逻辑字体句柄 
+!ctrl_vlist.setFont(混入字体属性) = @.setFont(point=10;name="宋体");
+!ctrl_vlist.clientRect =  获取控件客户区块位置(::RECT结构体)
+!ctrl_vlist.theme = 外观主题,例如\nwinform.button.theme = "Explorer"\nwinform.button.theme = false
+!ctrl_vlist.modifyStyle(.(remove,add) = 如果指定第三个参数，则使用此参数调用::SetWidnowPos 
+!ctrl_vlist.modifyStyleEx(.(remove,add) = 如果指定第三个参数，则使用此参数调用::SetWidnowPos
+!ctrl_vlist.capture = 是否捕获全局鼠标消息
+!ctrl_vlist.close() = 关闭控件窗口
+!ctrl_vlist.setExtended(_LVS_EX__) = 启用树视图指定扩展样式
+!ctrl_vlist.setExtended(_LVS_EX__,false) = 取消树视图指定扩展样式
+!ctrl_vlist.getExtended() = 获取树视图扩展样式
+!ctrl_vlist.getExtended(_LVS_EX__) = 获取树视图指定扩展样式
+!ctrl_vlist.gridLines = 是否显示网格线
+!ctrl_vlist.setFocus() = 设置焦点 
+!ctrl_vlist.setPos(.(x坐标,y坐标,宽,高,插入位置,参数) = 调整窗口位置或排序,所有参数可选\n同时指定x,y坐标则移动位置\n同时指定宽高则改变大小\n指定插入位置(句柄或_HWND前缀常量)则调整Z序
+!ctrl_vlist.getPos() = 返回相对坐标,宽,高\nx,y,cx,cy=win.getPos(hwnd)
+!ctrl_vlist.getTileViewInfo() = 返回排列显示相关属性
+!ctrl_vlist.setTileViewInfo() = 设置排列显示相关属性
+!ctrl_vlist.ensureVisible() = 保证显示选中项
+!ctrl_vlist.ensureVisible(__) = 保证显示指定项
+!ctrl_vlist.getImageList( _LVSIL__ ) = 获取指定图像列表,\n可选使用 _LVSIL_ 前缀常量指定类型
+!ctrl_vlist.setImageList( imageList,_LVSIL__ ) = 获取指定图像列表,\n可选使用 _LVSIL_ 前缀常量指定类型
+!ctrl_vlist.fillParent(.(列序号) = 使指定列自适应父窗口宽度,\n如果不指定列默认调整最后一列
+!ctrl_vlist.adjust = @.adjust = function(cx,cy){
+    winform.listview.fillParent(/*列序号*/);
+}
+!ctrl_vlist.findItem(.(查找文本,起始位置,是否部份匹配,是否返回查询) = 使用文本查找匹配项,\n除第一个参数外,所有参数可选,默认支持部份匹配,并查找所有项
+!ctrl_vlist.addCtrl = @.addCtrl(\n	edit ={ cls="edit";left=0;top=0;right=50;bottom=50;autoResize=false ;hide=1;edge=1;  }\n)
+!ctrl_vlist.createAdoAdapter(__/*ADO数据源*/) = 设置数据源\nSQL查询语句必须显示的指定要显示的字段以及顺序
+!ctrl_vlist.createAdapter( 类对象 ) = @.createAdapter( class {\n    count = function () {\n        return 10;\n    }  \n    getItem = function (row, col) {\n        return ..string.random(3);\n    }\n    close = function () {\n        \n    }\n});
+!ctrl_vlist.createTableAdapter(.(table对象,列名数组) = 设置数据源,参数@2可选
+!ctrl_vlist.createSqliteAdapter(.(sqlite连接对象,sql语句) = 设置数据源\nsql必须使用SELECT 显示的字段列表 FROM开始 
+!ctrl_vlist.createAdapter() = !ctrl_vlist_adapte.
+!ctrl_vlist.createTableAdapter() = !ctrl_vlist_adapte.
+!ctrl_vlist.createAdoAdapter() = !ctrl_vlist_adapte.
+!ctrl_vlist.createSqliteAdapter() = !ctrl_vlist_adapte.
+!ctrl_vlist.dataAdapter = 数据源适配器\n!ctrl_vlist_adapte.
+!ctrl_vlist_adapte.update() = 更新数据源
+!ctrl_vlist_adapte.close = @.close = function(){
+    __/*自定义数据连接关闭操作*/
+}
+end intellisense**/
